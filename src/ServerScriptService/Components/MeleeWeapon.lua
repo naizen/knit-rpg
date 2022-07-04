@@ -10,8 +10,6 @@ local RaycastHitbox = require(ReplicatedStorage.Packages.Hitbox)
 local FX = ServerStorage.FX
 local Sounds = ServerStorage.Sounds
 
--- TODO: Replace with a service instead. Manually created remote events on items are not going to scale. Any changes you will have to copy and paste for each item 
-
 local MeleeWeapon = Component.new({
     Tag = "MeleeWeapon"
 })
@@ -19,6 +17,11 @@ local MeleeWeapon = Component.new({
 function MeleeWeapon:Construct()
     self.trove = Trove.new()
     self.hitboxTrove = self.trove:Extend()
+
+    self.attackEvent = Instance.new("RemoteEvent")
+    self.attackEvent.Name = "Attack"
+    self.attackEvent.Archivable = false
+    self.attackEvent.Parent = self.Instance
 end
 
 function MeleeWeapon:Start()
@@ -29,30 +32,31 @@ function MeleeWeapon:Start()
     -- self.trove:Add(AttackEvent.OnServerEvent:Connect(function()
     --     print("MeleeWeapon Attack from Server")
     -- end))
-    -- local StatsService = Knit.GetService("StatsService")
-    -- local hitbox
-    -- local damage = 25
+
+    local StatsService = Knit.GetService("StatsService")
+    local hitbox
+    local damage = 25
 
     -- local function IsSamePlayer(player)
     --     return self.Instance:GetAttribute("PlayerId") == player.UserId
     -- end
 
-    -- local function AddWeaponTrail()
-    --     local trail = FX.SwordTrail:Clone()
-    --     trail.Parent = self.Instance.Blade
-    --     trail.Attachment0 = self.Instance.Blade.Attachment0
-    --     trail.Attachment1 = self.Instance.Blade.Attachment1
-    --     Debris:AddItem(trail, 0.3)
-    -- end
+    local function AddWeaponTrail()
+        local trail = FX.SwordTrail:Clone()
+        trail.Parent = self.Instance.Blade
+        trail.Attachment0 = self.Instance.Blade.Attachment0
+        trail.Attachment1 = self.Instance.Blade.Attachment1
+        Debris:AddItem(trail, 0.3)
+    end
 
-    -- local function PlaySlashSound()
-    --     local slashSound = Sounds.Slash:Clone()
-    --     slashSound.Parent = self.Instance
-    --     slashSound.PlaybackSpeed = math.random(85, 110) / 100
-    --     slashSound:Play()
+    local function PlaySlashSound()
+        local slashSound = Sounds.Slash:Clone()
+        slashSound.Parent = self.Instance
+        slashSound.PlaybackSpeed = math.random(85, 110) / 100
+        slashSound:Play()
 
-    --     Debris:AddItem(slashSound, 0.4)
-    -- end
+        Debris:AddItem(slashSound, 0.4)
+    end
 
     -- local function OnAttack(player)
     --     if not IsSamePlayer(player) then
@@ -69,51 +73,78 @@ function MeleeWeapon:Start()
     --     end)
     -- end
 
-    -- local function SetupHitbox(player)
-    --     hitbox = RaycastHitbox.new(self.Instance)
-    --     local raycastParams = RaycastParams.new()
-    --     hitbox.Visualizer = true
-    --     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    --     raycastParams.FilterDescendantsInstances = {self.Instance, player.Character}
-    --     hitbox.RaycastParams = self.raycastParams
-    --     self.hitboxTrove:Add(hitbox)
+    local function CreateHitbox(player)
+        hitbox = RaycastHitbox.new(self.Instance)
 
-    --     local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
+        -- Dynamically generate hitbox points based on handle and blade size
+        local startZ = -(self.Instance.Handle.Size.Z / 2)
+        local endZ = startZ - self.Instance.Blade.Size.Z
 
-    --     self.hitboxTrove:Add(humanoid.Died:Connect(function()
-    --         self.hitboxTrove:Clean()
-    --     end))
+        local points = {}
 
-    --     self.hitboxTrove:Add(Players.PlayerRemoving:Connect(function(playerRemoved)
-    --         if playerRemoved == player then
-    --             self.hitboxTrove:Clean()
-    --         end
-    --     end))
-    -- end
+        for i = startZ, endZ, -0.5 do
+            table.insert(points, Vector3.new(0, 0, i))
+        end
 
-    -- local function OnEquip(player, equipped)
-    --     if not IsSamePlayer(player) then
-    --         return
-    --     end
+        hitbox:SetPoints(self.Instance.Handle, points)
 
-    --     if equipped then
-    --         SetupHitbox(player)
-    --     else
-    --         self.hitboxTrove:Clean()
-    --     end
-    -- end
+        hitbox.Visualizer = false
 
-    -- local function OnDrop(player)
-    --     if not IsSamePlayer(player) then
-    --         return
-    --     end
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+        raycastParams.FilterDescendantsInstanceAs = {self.Instance, player.Character}
+        hitbox.RaycastParams = raycastParams
 
-    --     self.hitboxTrove:Clean()
-    -- end
+        self.hitboxTrove:Add(hitbox)
 
-    -- self.trove:Add(AttackEvent.OnServerEvent:Connect(OnAttack))
-    -- self.trove:Add(EquipEvent.OnServerEvent:Connect(OnEquip))
-    -- self.trove:Add(DropEvent.OnServerEvent:Connect(OnDrop))
+        local humanoid = player.Character:FindFirstChildWhichIsA("Humanoid")
+
+        self.hitboxTrove:Add(humanoid.Died:Connect(function()
+            self.hitboxTrove:Clean()
+        end))
+
+        self.hitboxTrove:Add(Players.PlayerRemoving:Connect(function(playerRemoved)
+            if playerRemoved == player then
+                self.hitboxTrove:Clean()
+            end
+        end))
+
+        hitbox.OnHit:Connect(function(hit, target)
+            target:TakeDamage(damage)
+
+            StatsService:UpdateStat(player, 'strength', 'xp', 10)
+        end)
+    end
+
+    local function DestroyHitbox()
+        hitbox:Destroy()
+
+        self.hitboxTrove:Clean()
+    end
+
+    local function OnAttack(player)
+        hitbox:HitStart()
+
+        AddWeaponTrail()
+        PlaySlashSound()
+    end
+
+    local function OnEquip(player)
+        CreateHitbox(player)
+    end
+
+    local function OnUnequip(player)
+        DestroyHitbox()
+    end
+
+    local function OnDrop(player)
+        DestroyHitbox()
+    end
+
+    self.trove:Add(self.attackEvent.OnServerEvent:Connect(OnAttack))
+    self.trove:Add(self.Instance.Equip.OnServerEvent:Connect(OnEquip))
+    self.trove:Add(self.Instance.Unequip.OnServerEvent:Connect(OnUnequip))
+    self.trove:Add(self.Instance.Drop.OnServerEvent:Connect(OnDrop))
 end
 
 function MeleeWeapon:Destroy()

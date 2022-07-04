@@ -201,8 +201,8 @@ function UIController:InitMenu()
         ResetOnSpawn = false,
         ZIndexBehavior = "Sibling",
         Enabled = Computed(function()
-            return false
-            -- return self.menuOpen:get()
+            -- return false
+            return self.menuOpen:get()
         end),
         [Children] = New "Frame" {
             Name = "Menu",

@@ -7,7 +7,6 @@ local Trove = require(ReplicatedStorage.Packages.Trove)
 local Signal = require(ReplicatedStorage.Packages.Signal)
 local ForLocalPlayer = require(StarterPlayer.StarterPlayerScripts.Source.ComponentExtensions.ForLocalPlayer)
 local PlayerConfig = require(StarterPlayer.StarterPlayerScripts.Source.PlayerConfig)
-local ClientItem = require(script.Parent.ClientItem)
 
 local ClientMeleeWeapon = Component.new({
     Tag = "MeleeWeapon",
@@ -40,20 +39,15 @@ function ClientMeleeWeapon:SetupForLocalPlayer()
                 attackCount = 0
             end
 
-            -- local MeleeWeaponService = Knit.GetService("MeleeWeaponService")
-            -- MeleeWeaponService.Attack:Fire()
-            self.Attack:Fire()
+            print("ClientMeleeWeapon attack")
+            self.Instance.Attack:FireServer()
 
             task.wait(timeBetweenAttacks)
             debounce = false
         end
     end
 
-    local item = self:GetComponent(ClientItem)
-
-    self.playerTrove:Add(item.Activate:Connect(function()
-        -- print("ClientMeleeWeapon item activated: ", self.Instance.Name)
-    end))
+    self.playerTrove:Add(self.Instance.Activate.OnClientEvent:Connect(OnActivate))
 end
 
 function ClientMeleeWeapon:CleanupForLocalPlayer()

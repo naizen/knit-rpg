@@ -17,18 +17,16 @@ local slotKeybinds = {
 
 local INPUT_DEBOUNCE_TIME = 0.5
 
+-- TODO: Remove equippedSlotIndex because its a pain in the butt to maintain and refactor to use a dictionary to keep track of slot items and their equipped state
 local HotbarController = Knit.CreateController {
     Name = "HotbarController",
     inputTrove = Trove.new(),
+    playerTrove = Trove.new(),
     slots = {},
     equippedSlotIndex = nil,
-    activeItem = nil,
     playerController = nil,
     inputDebounce = false
 }
-
-HotbarController.ItemActivated = Signal.new()
-HotbarController.ItemDropped = Signal.new()
 
 function HotbarController:Setup()
     Knit.Player.CharacterAdded:Connect(function()
@@ -70,79 +68,81 @@ function HotbarController:Setup()
             return
         end
 
-        if item ~= nil and item ~= self.activeItem then
-            -- Adds item to a slot
+        if item ~= nil then
+            -- Adds item to a slot TODO: Replace with a dictionary of slot objects
             table.insert(self.slots, item)
         end
     end)
 end
 
 function HotbarController:OnKeyDown(keycode)
-    -- if self.inputDebounce then
-    --     return
-    -- end
-
-    -- Dropping item
-    if keycode == Enum.KeyCode.Q and self:IsActiveItemEquipped() then
-        self:DropActiveItem()
+    if keycode == Enum.KeyCode.Q then
+        self:DropEquippedItem()
         return
     end
 
     local slotIndex = slotKeybinds[keycode]
 
-    if slotIndex == nil then
-        return
+    if slotIndex then
+        self:HandleEquip(slotIndex)
     end
+end
 
+function HotbarController:HandleEquip(slotIndex)
     local item = self.slots[slotIndex]
 
     if not item then
         return
     end
 
-    -- self.inputDebounce = true
+    self:UnequipCurrentItem(true)
 
-    -- If switching items, unequip the previous active item
-    if self.activeItem ~= nil and self.activeItem ~= item then
-        self.activeItem:SetAttribute("IsEquipped", false)
-    end
-
-    local equipped = false
-
-    self.activeItem = item
-
-    if self.equippedSlotIndex == slotIndex then
-        -- Unequip if the slot already equipped
+    if slotIndex == self.equippedSlotIndex then
         self.equippedSlotIndex = nil
-        equipped = false
     else
         self.equippedSlotIndex = slotIndex
-        equipped = true
+
+        self.playerController:Equip(item, true, true)
+
+        item.Equip:FireServer()
     end
+end
 
-    self.playerController:Equip(item, equipped, true)
-    self.activeItem:SetAttribute("IsEquipped", equipped)
+function HotbarController:UnequipCurrentItem(playEquipAnim)
+    if self.equippedSlotIndex then
+        local equippedItem = self.slots[self.equippedSlotIndex]
 
-    -- task.wait(INPUT_DEBOUNCE_TIME)
-    -- self.inputDebounce = false
+        self.playerController:Equip(equippedItem, false, playEquipAnim)
+
+        equippedItem.Unequip:FireServer()
+
+        self.equippedSlotIndex = nil
+    end
 end
 
 function HotbarController:OnMouseLeftDown()
-    if self:IsActiveItemEquipped() then
-        self.ItemActivated:Fire()
+    if not self.equippedSlotIndex then
+        return
     end
+
+    local item = self.slots[self.equippedSlotIndex]
+
+    item.Activate:FireServer()
 end
 
-function HotbarController:IsActiveItemEquipped()
-    return self.equippedSlotIndex and self.activeItem
-end
+function HotbarController:DropEquippedItem()
+    if not self.equippedSlotIndex then
+        return
+    end
 
-function HotbarController:DropActiveItem()
+    local item = self.slots[self.equippedSlotIndex]
+
     self.slots[self.equippedSlotIndex] = nil
     self.equippedSlotIndex = nil
-    self.ItemDropped:Fire(self.activeItem)
-    self.playerController:Equip(self.activeItem, false, false)
-    self.activeItem = nil
+
+    self.playerController:Equip(item, false, false)
+
+    item.Drop:FireServer()
 end
 
 function HotbarController:PrintSlots()
